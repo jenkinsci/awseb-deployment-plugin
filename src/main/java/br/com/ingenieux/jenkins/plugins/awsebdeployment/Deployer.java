@@ -45,7 +45,6 @@ import com.amazonaws.auth.AWSCredentialsProviderChain;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.internal.StaticCredentialsProvider;
 import com.amazonaws.regions.Region;
-import com.amazonaws.regions.Regions;
 import com.amazonaws.services.elasticbeanstalk.AWSElasticBeanstalk;
 import com.amazonaws.services.elasticbeanstalk.AWSElasticBeanstalkClient;
 import com.amazonaws.services.elasticbeanstalk.model.CreateApplicationVersionRequest;
@@ -59,7 +58,7 @@ import com.amazonaws.services.s3.AmazonS3Client;
 public class Deployer {
 	private static final int MAX_ATTEMPTS = 15;
 
-	private AWSEBDeploymentBuilder context;
+	private AWSEBDeploymentProvider context;
 	
 	private PrintStream logger;
 
@@ -89,7 +88,7 @@ public class Deployer {
 
 	private BuildListener listener;
 
-	public Deployer(AWSEBDeploymentBuilder builder,
+	public Deployer(AWSEBDeploymentProvider builder,
 			AbstractBuild<?, ?> build, Launcher launcher, BuildListener listener) throws IOException, InterruptedException {
 		this.context = builder;
 		this.logger = listener.getLogger();
@@ -203,8 +202,7 @@ public class Deployer {
 				new StaticCredentialsProvider(new BasicAWSCredentials(
 						context.getAwsAccessKeyId(),
 						context.getAwsSecretSharedKey())));
-		Region region = Region.getRegion(Regions.fromName(context
-				.getAwsRegion()));
+		Region region = Region.getRegion(context.getAwsRegion());
 		ClientConfiguration clientConfig = new ClientConfiguration();
 
 		clientConfig.setUserAgent("ingenieux CloudButler/" + getVersion());
