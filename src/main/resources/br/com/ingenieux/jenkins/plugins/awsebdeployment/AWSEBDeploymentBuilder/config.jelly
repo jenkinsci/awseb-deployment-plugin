@@ -5,19 +5,13 @@
     See global.jelly for a general discussion about jelly script.
   -->
 
-  <!--
-    Creates a text field that shows the value of the "name" property.
-    When submitted, it will be passed to the corresponding constructor parameter.
-  -->
-  <f:entry title="AWS Access Key Id" field="awsAccessKeyId">
-    <f:textbox />
+  <f:entry title="AWS credentials" field="credentials">
+    <f:select />
   </f:entry>
-  <f:entry title="AWS Secret Shared Key" field="awsSecretSharedKey">
-    <f:textbox />
-  </f:entry>
+    
   <f:entry title="AWS Region" field="awsRegion">
     <f:enum field="awsRegion">
-    	${it.getName()}
+        ${it.getName()}
     </f:enum>
   </f:entry>
   <f:entry title="Application Name" field="applicationName">

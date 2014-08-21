@@ -30,17 +30,9 @@ import hudson.tasks.BuildStep;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Builder;
-import hudson.util.FormValidation;
-
-import java.io.IOException;
-
-import javax.servlet.ServletException;
-
-import net.sf.json.JSONObject;
+import hudson.util.ListBoxModel;
 
 import org.kohsuke.stapler.DataBoundConstructor;
-import org.kohsuke.stapler.QueryParameter;
-import org.kohsuke.stapler.StaplerRequest;
 
 import com.amazonaws.regions.Regions;
 
@@ -49,14 +41,11 @@ import com.amazonaws.regions.Regions;
  */
 public class AWSEBDeploymentBuilder extends Builder implements BuildStep, AWSEBDeploymentProvider {
 	@DataBoundConstructor
-	public AWSEBDeploymentBuilder(String awsAccessKeyId,
-			String awsSecretSharedKey, Regions awsRegion,
+	public AWSEBDeploymentBuilder(Regions awsRegion,
 			String applicationName, String environmentName, String bucketName,
 			String keyPrefix, String versionLabelFormat, String rootObject,
-			String includes, String excludes) {
+			String includes, String excludes, String credentials) {
 		super();
-		this.awsAccessKeyId = awsAccessKeyId;
-		this.awsSecretSharedKey = awsSecretSharedKey;
 		this.awsRegion = awsRegion;
 		this.applicationName = applicationName;
 		this.environmentName = environmentName;
@@ -66,139 +55,107 @@ public class AWSEBDeploymentBuilder extends Builder implements BuildStep, AWSEBD
 		this.rootObject = rootObject;
 		this.includes = includes;
 		this.excludes = excludes;
+		this.credentials = AWSEBDeploymentPublisher.getDesc().getCredentialsByName(credentials);
 	}
 
-	/**
-	 * Access Key Id
-	 */
-	private String awsAccessKeyId;
-
-	public String getAwsAccessKeyId() {
-		return awsAccessKeyId;
-	}
-
-	public void setAwsAccessKeyId(String awsAccessKeyId) {
-		this.awsAccessKeyId = awsAccessKeyId;
-	}
-
-	/**
-	 * Secret Shared Key
-	 */
-	private String awsSecretSharedKey;
-
-	public String getAwsSecretSharedKey() {
-		return awsSecretSharedKey;
-	}
-
-	public void setAwsSecretSharedKey(String awsSecretSharedKey) {
-		this.awsSecretSharedKey = awsSecretSharedKey;
-	}
 
 	/**
 	 * AWS Region
 	 */
-	private Regions awsRegion;
+	private final Regions awsRegion;
 
 	public Regions getAwsRegion() {
 		return awsRegion;
 	}
 
-	public void setAwsRegion(Regions awsRegion) {
-		this.awsRegion = awsRegion;
-	}
 	
 	/**
 	 * Application Name
 	 */
-	private String applicationName;
+	private final String applicationName;
 
 	public String getApplicationName() {
 		return applicationName;
 	}
 
-	public void setApplicationName(String applicationName) {
-		this.applicationName = applicationName;
-	}
 
 	/**
 	 * Environment Name
 	 */
-	private String environmentName;
+	private final String environmentName;
 
 	public String getEnvironmentName() {
 		return environmentName;
 	}
 
-	public void setEnvironmentName(String environmentName) {
-		this.environmentName = environmentName;
-	}
 
 	/**
 	 * Bucket Name
 	 */
-	private String bucketName;
+	private final String bucketName;
 
 	public String getBucketName() {
 		return bucketName;
 	}
 
-	public void setBucketName(String bucketName) {
-		this.bucketName = bucketName;
-	}
 
 	/**
 	 * Key Format
 	 */
-	private String keyPrefix;
+	private final String keyPrefix;
 
 	public String getKeyPrefix() {
 		return keyPrefix;
 	}
 
-	public void setKeyPrefix(String keyFormat) {
-		this.keyPrefix = keyFormat;
-	}
 
-	private String versionLabelFormat;
+	private final String versionLabelFormat;
 
 	public String getVersionLabelFormat() {
 		return versionLabelFormat;
 	}
 
-	public void setVersionLabelFormat(String versionLabelFormat) {
-		this.versionLabelFormat = versionLabelFormat;
-	}
 
-	private String rootObject;
+	private final String rootObject;
 
 	public String getRootObject() {
 		return rootObject;
 	}
 
-	public void setRootObject(String rootDirectory) {
-		this.rootObject = rootDirectory;
-	}
 
-	private String includes;
+	private final String includes;
 
 	public String getIncludes() {
 		return includes;
 	}
 
-	public void setIncludes(String includes) {
-		this.includes = includes;
-	}
 
-	private String excludes;
+	private final String excludes;
 
 	public String getExcludes() {
 		return excludes;
 	}
 
-	public void setExcludes(String excludes) {
-		this.excludes = excludes;
+	
+	/**
+	 * Credentials Name from the global config
+	 */
+	private final AWSEBCredentials credentials;
+	
+	public AWSEBCredentials getCredentials() {
+		return credentials;
 	}
+	
+    public ListBoxModel doFillCredentialsItems() {
+    	ListBoxModel items = new ListBoxModel();
+    	for (AWSEBCredentials credentials : AWSEBDeploymentPublisher.getDesc().getCredentials()) {
+    		items.add(credentials, credentials.getName());
+    	}
 
+        return items;
+    }
+	
+	
 	@Override
 	public boolean perform(AbstractBuild<?, ?> build, Launcher launcher,
 			BuildListener listener) {
@@ -220,9 +177,8 @@ public class AWSEBDeploymentBuilder extends Builder implements BuildStep, AWSEBD
     // Overridden for better type safety.
     // If your plugin doesn't really define any property on Descriptor,
     // you don't have to do this.
-    @SuppressWarnings("rawtypes")
 	@Override
-    public BuildStepDescriptor getDescriptor() {
+    public DescriptorImpl getDescriptor() {
         return (DescriptorImpl)super.getDescriptor();
     }
 
@@ -236,162 +192,6 @@ public class AWSEBDeploymentBuilder extends Builder implements BuildStep, AWSEBD
      */
     @Extension // This indicates to Jenkins that this is an implementation of an extension point.
     public static final class DescriptorImpl extends BuildStepDescriptor<Builder> {
-    	/**
-    	 * Access Key Id
-    	 */
-    	private String awsAccessKeyId;
-
-    	public String getAwsAccessKeyId() {
-    		return awsAccessKeyId;
-    	}
-
-    	public void setAwsAccessKeyId(String awsAccessKeyId) {
-    		this.awsAccessKeyId = awsAccessKeyId;
-    	}
-
-    	/**
-    	 * Secret Shared Key
-    	 */
-    	private String awsSecretSharedKey;
-
-    	public String getAwsSecretSharedKey() {
-    		return awsSecretSharedKey;
-    	}
-
-    	public void setAwsSecretSharedKey(String awsSecretSharedKey) {
-    		this.awsSecretSharedKey = awsSecretSharedKey;
-    	}
-
-    	/**
-    	 * AWS Region
-    	 */
-    	private String awsRegion;
-
-    	public String getAwsRegion() {
-    		return awsRegion;
-    	}
-
-    	public void setAwsRegion(String awsRegion) {
-    		this.awsRegion = awsRegion;
-    	}
-
-    	/**
-    	 * Application Name
-    	 */
-    	private String applicationName;
-
-    	public String getApplicationName() {
-    		return applicationName;
-    	}
-
-    	public void setApplicationName(String applicationName) {
-    		this.applicationName = applicationName;
-    	}
-
-    	/**
-    	 * Environment Name
-    	 */
-    	private String environmentName;
-
-    	public String getEnvironmentName() {
-    		return environmentName;
-    	}
-
-    	public void setEnvironmentName(String environmentName) {
-    		this.environmentName = environmentName;
-    	}
-
-    	/**
-    	 * Bucket Name
-    	 */
-    	private String bucketName;
-
-    	public String getBucketName() {
-    		return bucketName;
-    	}
-
-    	public void setBucketName(String bucketName) {
-    		this.bucketName = bucketName;
-    	}
-
-    	/**
-    	 * Key Format
-    	 */
-    	private String keyPrefix;
-
-    	public String getKeyPrefix() {
-    		return keyPrefix;
-    	}
-
-    	public void setKeyPrefix(String keyFormat) {
-    		this.keyPrefix = keyFormat;
-    	}
-
-    	private String versionLabelFormat;
-
-    	public String getVersionLabelFormat() {
-    		return versionLabelFormat;
-    	}
-
-    	public void setVersionLabelFormat(String versionLabelFormat) {
-    		this.versionLabelFormat = versionLabelFormat;
-    	}
-
-    	private String rootObject;
-
-    	public String getRootObject() {
-    		return rootObject;
-    	}
-
-    	public void setRootObject(String rootDirectory) {
-    		this.rootObject = rootDirectory;
-    	}
-
-    	private String includes;
-
-    	public String getIncludes() {
-    		return includes;
-    	}
-
-    	public void setIncludes(String includes) {
-    		this.includes = includes;
-    	}
-
-    	private String excludes;
-
-    	public String getExcludes() {
-    		return excludes;
-    	}
-
-    	public void setExcludes(String excludes) {
-    		this.excludes = excludes;
-    	}
-
-
-        /**
-         * In order to load the persisted global configuration, you have to 
-         * call load() in the constructor.
-         */
-        public DescriptorImpl() {
-            load();
-        }
-
-        /**
-         * Performs on-the-fly validation of the form field 'name'.
-         *
-         * @param value
-         *      This parameter receives the value that the user has typed.
-         * @return
-         *      Indicates the outcome of the validation. This is sent to the browser.
-         */
-        public FormValidation doCheckName(@QueryParameter String value)
-                throws IOException, ServletException {
-//            if (value.length() == 0)
-//                return FormValidation.error("Please set a name");
-//            if (value.length() < 4)
-//                return FormValidation.warning("Isn't the name too short?");
-            return FormValidation.ok();
-        }
 
         @SuppressWarnings("rawtypes")
 		public boolean isApplicable(Class<? extends AbstractProject> aClass) {
@@ -405,14 +205,15 @@ public class AWSEBDeploymentBuilder extends Builder implements BuildStep, AWSEBD
         public String getDisplayName() {
             return "Deploy into AWS Elastic Beanstalk";
         }
+        
+        public ListBoxModel doFillCredentialsItems() {
+        	ListBoxModel items = new ListBoxModel();
+        	for (AWSEBCredentials credentials : AWSEBDeploymentPublisher.getDesc().getCredentials()) {
+        		items.add(credentials, credentials.getName());
+        	}
 
-        @Override
-        public boolean configure(StaplerRequest req, JSONObject formData) throws FormException {
-            req.bindJSON(this, formData);
-
-            save();
-
-            return super.configure(req,formData);
+            return items;
         }
+    	
     }
 }

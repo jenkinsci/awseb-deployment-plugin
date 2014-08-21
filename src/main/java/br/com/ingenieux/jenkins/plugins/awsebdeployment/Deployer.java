@@ -41,9 +41,6 @@ import org.apache.commons.lang.StringUtils;
 
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.AWSCredentialsProviderChain;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.internal.StaticCredentialsProvider;
 import com.amazonaws.regions.Region;
 import com.amazonaws.services.elasticbeanstalk.AWSElasticBeanstalk;
 import com.amazonaws.services.elasticbeanstalk.AWSElasticBeanstalkClient;
@@ -117,10 +114,20 @@ public class Deployer {
 	}
 
 	private void updateEnvironments() throws Exception {
-		DescribeEnvironmentsResult environments = awseb
-				.describeEnvironments(new DescribeEnvironmentsRequest()
+		
+		DescribeEnvironmentsResult environments;
+		if (environmentName != null && !environmentName.isEmpty()) { 
+			environments = awseb.describeEnvironments(
+					new DescribeEnvironmentsRequest()
 						.withApplicationName(applicationName)
-						.withEnvironmentNames(environmentName));
+						.withEnvironmentNames(environmentName)
+				);
+		} else {
+			environments = awseb.describeEnvironments(
+					new DescribeEnvironmentsRequest()
+						.withApplicationName(applicationName)
+				);
+		}
 
 		boolean found = (1 == environments.getEnvironments().size());
 
@@ -195,13 +202,10 @@ public class Deployer {
 
 	private void initAWS() {
 		log("Creating S3 and AWSEB Client (AWS Access Key Id: %s, region: %s)",
-				context.getAwsAccessKeyId(),
+				context.getCredentials().getAwsAccessKeyId(),
 				context.getAwsRegion());
 
-		AWSCredentialsProvider credentials = new AWSCredentialsProviderChain(
-				new StaticCredentialsProvider(new BasicAWSCredentials(
-						context.getAwsAccessKeyId(),
-						context.getAwsSecretSharedKey())));
+		AWSCredentialsProvider credentials = context.getCredentials().getAwsCredentials();
 		Region region = Region.getRegion(context.getAwsRegion());
 		ClientConfiguration clientConfig = new ClientConfiguration();
 

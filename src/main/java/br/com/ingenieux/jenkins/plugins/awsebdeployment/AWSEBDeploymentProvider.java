@@ -4,26 +4,24 @@ import com.amazonaws.regions.Regions;
 
 public interface AWSEBDeploymentProvider {
 
-	String getRootObject();
+	public String getRootObject();
 
-	String getKeyPrefix();
+	public String getKeyPrefix();
 
-	String getBucketName();
+	public String getBucketName();
 
-	String getApplicationName();
+	public String getApplicationName();
 
-	String getVersionLabelFormat();
+	public String getVersionLabelFormat();
 
-	String getEnvironmentName();
+	public String getEnvironmentName();
 
-	String getAwsAccessKeyId();
+	public AWSEBCredentials getCredentials();
 
-	Regions getAwsRegion();
+	public Regions getAwsRegion();
 
-	String getAwsSecretSharedKey();
+	public String getExcludes();
 
-	String getExcludes();
-
-	String getIncludes();
+	public String getIncludes();
 
 }
