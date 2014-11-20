@@ -111,13 +111,17 @@ public class Deployer {
 
 		createApplicationVersion();
 
-		updateEnvironments();
+		boolean state = updateEnvironments();
 
-		listener.finished(Result.SUCCESS);
+                if (state) {
+        		listener.finished(Result.SUCCESS);
+                } else {
+                        listener.finished(Result.FAILURE);
+                }
 
 	}
 
-	private void updateEnvironments() throws Exception {
+	private boolean updateEnvironments() throws Exception {
 		DescribeEnvironmentsResult environments = awseb
 				.describeEnvironments(new DescribeEnvironmentsRequest()
 						.withApplicationName(applicationName)
@@ -143,9 +147,24 @@ public class Deployer {
 				try {
 					awseb.updateEnvironment(uavReq);
 
-					log("q'Apla!");
-					
-					return;
+                                        for(int x = 1; x < MAX_ATTEMPTS; x = x+1 ) {
+                                            DescribeEnvironmentsResult env = awseb
+                                                        .describeEnvironments(new DescribeEnvironmentsRequest()
+                                                        .withApplicationName(applicationName)
+                                                        .withEnvironmentNames(environmentName)
+                                                        .withIncludeDeleted(false));
+
+                                            String status = env.getEnvironments().get(0).getStatus();
+                                            String health = env.getEnvironments().get(0).getHealth();
+                                            
+                                            TimeUnit.SECONDS.sleep(6);
+        				    log("q'Apla! %s , Health -- %s", status, health);
+
+                                            if ( status.equals("Ready") && health.equals("Green") ) {
+                                                return true;
+                                            }
+                                        }
+
 				} catch (Exception exc) {
 					log("Problem: " + exc.getMessage());
 
@@ -160,8 +179,10 @@ public class Deployer {
 					Thread.sleep(TimeUnit.SECONDS.toMillis(90));
 				}
 			}
+			return false;
 		} else {
 			log("Environment not found. Continuing");
+                        return false;
 		}
 	}
 
