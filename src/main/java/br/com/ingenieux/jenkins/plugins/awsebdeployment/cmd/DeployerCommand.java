@@ -31,10 +31,9 @@ import com.amazonaws.services.elasticbeanstalk.model.UpdateEnvironmentRequest;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.util.VersionInfoUtils;
 
-import com.google.common.collect.Lists;
-import org.apache.commons.lang.Validate;
+import org.apache.commons.lang3.Validate;
 
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.ListIterator;
@@ -43,7 +42,7 @@ import java.util.concurrent.TimeUnit;
 import br.com.ingenieux.jenkins.plugins.awsebdeployment.AWSClientFactory;
 import br.com.ingenieux.jenkins.plugins.awsebdeployment.Constants;
 import br.com.ingenieux.jenkins.plugins.awsebdeployment.Utils;
-import edu.umd.cs.findbugs.annotations.SuppressWarnings;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import lombok.Data;
 import lombok.experimental.Delegate;
 
@@ -139,12 +138,9 @@ public class DeployerCommand implements Constants {
         public boolean perform() throws Exception {
             AWSClientFactory factory;
 
-            if (null != getDeployerConfig().getCredentials()) {
-                factory = AWSClientFactory
-                        .getClientFactory(getDeployerConfig().getCredentials(), getDeployerConfig().getAwsRegion());
-            } else {
-                factory = AWSClientFactory.getClientFactory("", getDeployerConfig().getAwsRegion());
-            }
+            // Null credentials fall back to the default AWS provider chain (instance profile, env vars...)
+            factory = AWSClientFactory
+                    .getClientFactory(getDeployerConfig().getCredentials(), getDeployerConfig().getAwsRegion());
 
             log ("Using region: '%s'", getDeployerConfig().getAwsRegion());
 
@@ -187,7 +183,7 @@ public class DeployerCommand implements Constants {
         public boolean perform() throws Exception {
             DescribeEnvironmentsRequest req = new DescribeEnvironmentsRequest().
                     withApplicationName(getApplicationName()).
-                    withEnvironmentNames(Lists.<String>newArrayList(getEnvironmentName().replaceAll("\\s", "").split(","))).
+                    withEnvironmentNames(Arrays.asList(getEnvironmentName().replaceAll("\\s", "").split(","))).
                     withIncludeDeleted(false);
 
             DescribeEnvironmentsResult result = getAwseb().describeEnvironments(req);
@@ -232,7 +228,7 @@ public class DeployerCommand implements Constants {
     public static class UpdateApplicationVersion extends DeployerCommand {
         @Override
         public boolean perform() throws Exception {
-            List<String> environmentIds = Lists.newArrayList(getEnvironmentId().split(","));
+            List<String> environmentIds = Arrays.asList(getEnvironmentId().split(","));
 
             for (ListIterator<String> i = environmentIds.listIterator(); i.hasNext(); ) {
                 String element = i.next();
@@ -252,7 +248,7 @@ public class DeployerCommand implements Constants {
     /**
      * Waits for the Environment to be Green and Available
      */
-    @SuppressWarnings({"EQ_DOESNT_OVERRIDE_EQUALS"})
+    @SuppressFBWarnings({"EQ_DOESNT_OVERRIDE_EQUALS"})
     public static class WaitForEnvironment extends DeployerCommand {
         final WaitFor waitFor;
 
@@ -272,7 +268,7 @@ public class DeployerCommand implements Constants {
         @Override
         public boolean perform() throws Exception {
 
-            List<String> environmentIds = Lists.newArrayList(getEnvironmentId().split(","));
+            List<String> environmentIds = Arrays.asList(getEnvironmentId().split(","));
 
             if (environmentIds.size() < 1) {
                 log("Environment not found. Aborting");
@@ -292,7 +288,7 @@ public class DeployerCommand implements Constants {
                 for (int nAttempt = 1; nAttempt <= maxAttempts; nAttempt++) {
 
                     List<EnvironmentDescription> environments = getAwseb().describeEnvironments(new DescribeEnvironmentsRequest()
-                            .withEnvironmentIds(Lists.<String>newArrayList(getEnvironmentId().split(",")))
+                            .withEnvironmentIds(Arrays.asList(getEnvironmentId().split(",")))
                             .withIncludeDeleted(false)
                     ).getEnvironments();
 
@@ -400,7 +396,7 @@ public class DeployerCommand implements Constants {
         public boolean perform() throws Exception {
             final DescribeEnvironmentsRequest req = new DescribeEnvironmentsRequest().
                     withApplicationName(getApplicationName()).
-                    withEnvironmentIds(Lists.<String>newArrayList(getEnvironmentId().split(","))).
+                    withEnvironmentIds(Arrays.asList(getEnvironmentId().split(","))).
                     withIncludeDeleted(false);
 
             final DescribeEnvironmentsResult result = getAwseb().describeEnvironments(req);

@@ -17,19 +17,19 @@
 package br.com.ingenieux.jenkins.plugins.awsebdeployment.cmd;
 
 import com.amazonaws.services.elasticbeanstalk.model.*;
-import com.google.common.collect.Lists;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.concurrent.TimeUnit;
 
-import edu.umd.cs.findbugs.annotations.SuppressWarnings;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
-import static org.apache.commons.lang.StringUtils.isNotBlank;
-import static org.apache.commons.lang.StringUtils.split;
+import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
-@SuppressWarnings({"EQ_DOESNT_OVERRIDE_EQUALS"})
+@SuppressFBWarnings({"EQ_DOESNT_OVERRIDE_EQUALS"})
 public class ZeroDowntime extends DeployerCommand {
     List<String> environmentNames;
 
@@ -45,7 +45,7 @@ public class ZeroDowntime extends DeployerCommand {
 
         for(ListIterator<String> i = environmentNames.listIterator(); i.hasNext();) {
             try {
-                List<String> envName = Lists.newArrayList(i.next());
+                List<String> envName = Collections.singletonList(i.next());
 
                 environmentDescription = lookupEnvironmentIds(envName);
 
@@ -84,7 +84,7 @@ public class ZeroDowntime extends DeployerCommand {
 
     private List<String> generateEnvironmentNames() {
 
-        List<String> newEnvironmentNames = Lists.newArrayList(getEnvironmentName().replaceAll("\\s", "").split(","));
+        List<String> newEnvironmentNames = new ArrayList<>(Arrays.asList(getEnvironmentName().replaceAll("\\s", "").split(",")));
 
         for (final ListIterator<String> iterator = newEnvironmentNames.listIterator(); iterator.hasNext(); ) {
             final String environmentName = iterator.next();

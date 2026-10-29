@@ -19,33 +19,31 @@ package br.com.ingenieux.jenkins.plugins.awsebdeployment;
 import com.amazonaws.AmazonWebServiceClient;
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.AWSCredentialsProviderChain;
-import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
-import com.amazonaws.internal.StaticCredentialsProvider;
 import com.amazonaws.services.elasticbeanstalk.AWSElasticBeanstalk;
 import com.amazonaws.services.s3.AmazonS3;
 import com.cloudbees.jenkins.plugins.awscredentials.AmazonWebServicesCredentials;
 import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
-import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 
 import hudson.ProxyConfiguration;
-import org.apache.commons.lang.reflect.ConstructorUtils;
-import org.apache.commons.lang.reflect.FieldUtils;
+import hudson.model.Item;
+import hudson.model.Run;
+import org.apache.commons.lang3.reflect.ConstructorUtils;
+import org.apache.commons.lang3.reflect.FieldUtils;
 
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.util.Collections;
-import java.util.List;
 
 import javax.security.auth.login.CredentialNotFoundException;
 
 import hudson.security.ACL;
 import jenkins.model.Jenkins;
 
-import static org.apache.commons.lang.StringUtils.defaultString;
-import static org.apache.commons.lang.StringUtils.isNotBlank;
+import static org.apache.commons.lang3.StringUtils.defaultString;
+import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 public class AWSClientFactory implements Constants {
 
@@ -67,14 +65,14 @@ public class AWSClientFactory implements Constants {
     AWSCredentialsProvider credentials = new DefaultAWSCredentialsProviderChain();
 
     if (null != cred) {
-      credentials = new AWSCredentialsProviderChain(new StaticCredentialsProvider(
-          new BasicAWSCredentials(cred.getCredentials().getAWSAccessKeyId(),
-                                  cred.getCredentials().getAWSSecretKey())));
+      // Keeps the session token when the credential assumes an IAM role
+      credentials = new AWSStaticCredentialsProvider(cred.getCredentials());
     }
 
     ClientConfiguration clientConfig = new ClientConfiguration();
 
-    Jenkins jenkins = Jenkins.getInstance();
+    // Null when running on an agent
+    Jenkins jenkins = Jenkins.getInstanceOrNull();
     if (jenkins != null && jenkins.proxy != null) {
        ProxyConfiguration proxyConfig = jenkins.proxy;
        clientConfig.setProxyHost(proxyConfig.name);
@@ -89,28 +87,43 @@ public class AWSClientFactory implements Constants {
     return new AWSClientFactory(credentials, clientConfig, awsRegion);
   }
 
-  public static AWSClientFactory getClientFactory(String credentialsId, String awsRegion)
+  public static AWSClientFactory getClientFactory(String credentialsId, String awsRegion, Item context)
       throws CredentialNotFoundException {
     AmazonWebServicesCredentials cred = null;
 
     if (isNotBlank(credentialsId)) {
-      cred = lookupNamedCredential(credentialsId);
+      cred = lookupNamedCredential(credentialsId, context);
     }
 
     return getClientFactory(cred, awsRegion);
   }
 
-  public static AmazonWebServicesCredentials lookupNamedCredential(String credentialsId)
+  /**
+   * Looks up a credential visible from the given item (or globally when the item is null)
+   */
+  public static AmazonWebServicesCredentials lookupNamedCredential(String credentialsId, Item context)
       throws CredentialNotFoundException {
-    List<AmazonWebServicesCredentials> credentialList =
-        CredentialsProvider.lookupCredentials(
-            AmazonWebServicesCredentials.class, Jenkins.getInstance(), ACL.SYSTEM,
-            Collections.<DomainRequirement>emptyList());
+    AmazonWebServicesCredentials cred = CredentialsMatchers.firstOrNull(
+        context != null
+            ? CredentialsProvider.lookupCredentialsInItem(
+                AmazonWebServicesCredentials.class, context, ACL.SYSTEM2, Collections.emptyList())
+            : CredentialsProvider.lookupCredentialsInItemGroup(
+                AmazonWebServicesCredentials.class, Jenkins.get(), ACL.SYSTEM2, Collections.emptyList()),
+        CredentialsMatchers.withId(credentialsId));
 
+    if (cred == null) {
+      throw new CredentialNotFoundException(credentialsId);
+    }
+    return cred;
+  }
+
+  /**
+   * Looks up a credential for a build, recording its usage
+   */
+  public static AmazonWebServicesCredentials lookupNamedCredential(String credentialsId, Run<?, ?> run)
+      throws CredentialNotFoundException {
     AmazonWebServicesCredentials cred =
-        CredentialsMatchers.firstOrNull(credentialList,
-                                        CredentialsMatchers.allOf(
-                                            CredentialsMatchers.withId(credentialsId)));
+        CredentialsProvider.findCredentialById(credentialsId, AmazonWebServicesCredentials.class, run);
 
     if (cred == null) {
       throw new CredentialNotFoundException(credentialsId);

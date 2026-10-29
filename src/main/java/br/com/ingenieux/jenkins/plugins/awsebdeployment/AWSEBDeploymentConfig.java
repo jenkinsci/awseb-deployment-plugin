@@ -17,7 +17,10 @@
 package br.com.ingenieux.jenkins.plugins.awsebdeployment;
 
 import com.cloudbees.jenkins.plugins.awscredentials.AmazonWebServicesCredentials;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -27,7 +30,7 @@ import org.jenkinsci.plugins.tokenmacro.MacroEvaluationException;
 @NoArgsConstructor
 @AllArgsConstructor
 @Data
-@ToString(exclude={"credentials"})
+@ToString(exclude = {"credentials"})
 public class AWSEBDeploymentConfig implements Serializable {
   private static final long serialVersionUID = 1L;
 

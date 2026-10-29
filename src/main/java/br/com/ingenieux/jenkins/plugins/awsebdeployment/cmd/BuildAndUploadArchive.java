@@ -19,20 +19,20 @@ package br.com.ingenieux.jenkins.plugins.awsebdeployment.cmd;
 import br.com.ingenieux.jenkins.plugins.awsebdeployment.Utils;
 import com.amazonaws.services.elasticbeanstalk.model.CreateStorageLocationResult;
 
-import edu.umd.cs.findbugs.annotations.SuppressWarnings;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import hudson.FilePath;
 import hudson.util.DirScanner;
-import org.apache.commons.io.FileUtils;
 
 import java.io.File;
-import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
 
-import static org.apache.commons.lang.StringUtils.isBlank;
+import static org.apache.commons.lang3.StringUtils.isBlank;
 
 /**
  * Builds and Uploads the Zip Archive
  */
-@SuppressWarnings({"EQ_DOESNT_OVERRIDE_EQUALS","OBL_UNSATISFIED_OBLIGATION"})
+@SuppressFBWarnings({"EQ_DOESNT_OVERRIDE_EQUALS"})
 public class BuildAndUploadArchive extends DeployerCommand {
     private File localArchive = null;
 
@@ -67,7 +67,7 @@ public class BuildAndUploadArchive extends DeployerCommand {
         if (null != localArchive && localArchive.exists()) {
             log("Cleaning up temporary file %s", localArchive.getAbsolutePath());
 
-            FileUtils.deleteQuietly(localArchive);
+            Files.deleteIfExists(localArchive.toPath());
         }
 
         return false;
@@ -79,15 +79,19 @@ public class BuildAndUploadArchive extends DeployerCommand {
         if (!rootFileObject.isDirectory()) {
             log("Root File Object is a file. We assume its a zip file, which is okay.");
 
-            rootFileObject.copyTo(new FileOutputStream(resultFile));
+            try (OutputStream os = Files.newOutputStream(resultFile.toPath())) {
+                rootFileObject.copyTo(os);
+            }
         } else {
             log("Zipping contents of Root File Object (%s) into tmp file %s (includes=%s, excludes=%s)",
                     rootFileObject.getName(), resultFile.getName(),
                     getDeployerConfig().getIncludes(), getDeployerConfig().getExcludes());
 
-            rootFileObject.zip(new FileOutputStream(resultFile),
-                    new DirScanner.Glob(getDeployerConfig().getIncludes(),
-                            getDeployerConfig().getExcludes()));
+            try (OutputStream os = Files.newOutputStream(resultFile.toPath())) {
+                rootFileObject.zip(os,
+                        new DirScanner.Glob(getDeployerConfig().getIncludes(),
+                                getDeployerConfig().getExcludes()));
+            }
         }
 
         return resultFile;

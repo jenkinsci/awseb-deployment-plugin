@@ -1,0 +1,49 @@
+name: Tag release
+
+# Every merge into master gets a CalVer tag (vYYYY.MM.DD.N, N = that day's
+# merge sequence), same scheme as ela-stack. The .hpi is built with that
+# version (so Jenkins shows it and sees it as newer than 0.3.x) and attached
+# to a GitHub release.
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute and push the next release tag
+        id: tag
+        run: |
+          today="$(date +%Y.%m.%d)"
+          last_seq="$(git tag -l "v${today}.*" | sed -E "s/^v${today}\.([0-9]+)$/\1/" | sort -n | tail -1)"
+          next_seq=$(( ${last_seq:-0} + 1 ))
+          tag="v${today}.${next_seq}"
+          git tag "$tag"
+          git push origin "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Tagged $tag"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Build the plugin with the release version
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: mvn -B -ntp clean verify -Drevision="${TAG#v}" -Dchangelist=
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: gh release create "$TAG" target/awseb-deployment-plugin.hpi --title "$TAG" --generate-notes

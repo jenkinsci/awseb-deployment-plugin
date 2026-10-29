@@ -19,8 +19,8 @@
 
 package br.com.ingenieux.jenkins.plugins.awsebdeployment.cmd;
 
-import com.google.common.collect.Lists;
-
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.ListIterator;
 
@@ -79,15 +79,14 @@ public class DeployerChain {
         return abortedOnPerform;
     }
 
-    @SuppressWarnings({"unchecked"})
     private void buildCommandList() {
-        this.commandList = Lists.newArrayList(
+        this.commandList = new ArrayList<>(Arrays.asList(
                 new DeployerCommand.InitLogger(),
                 new DeployerCommand.ValidateParameters(),
                 new DeployerCommand.InitAWS(),
                 new BuildAndUploadArchive(),
                 new DeployerCommand.CreateApplicationVersion()
-        );
+        ));
 
         if (c.deployerConfig.isZeroDowntime()) {
             commandList.add(new ZeroDowntime());

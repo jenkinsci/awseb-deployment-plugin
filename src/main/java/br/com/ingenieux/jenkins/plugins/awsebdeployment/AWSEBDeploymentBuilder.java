@@ -20,19 +20,22 @@
 package br.com.ingenieux.jenkins.plugins.awsebdeployment;
 
 import static java.lang.String.format;
-import static org.apache.commons.lang.StringUtils.defaultIfBlank;
+import static org.apache.commons.lang3.StringUtils.defaultIfBlank;
 
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.jenkinsci.Symbol;
 import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
+import org.kohsuke.stapler.verb.POST;
 
 import com.amazonaws.services.elasticbeanstalk.AWSElasticBeanstalk;
 import com.amazonaws.services.elasticbeanstalk.AWSElasticBeanstalkClient;
@@ -42,17 +45,12 @@ import com.amazonaws.services.elasticbeanstalk.model.DescribeEnvironmentsResult;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.cloudbees.jenkins.plugins.awscredentials.AmazonWebServicesCredentials;
-import com.cloudbees.plugins.credentials.CredentialsNameProvider;
-import com.cloudbees.plugins.credentials.CredentialsProvider;
-import com.cloudbees.plugins.credentials.common.AbstractIdCredentialsListBoxModel;
-import com.cloudbees.plugins.credentials.domains.DomainRequirement;
-import com.google.common.base.Function;
-import com.google.common.collect.Lists;
+import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 
-import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Extension;
 import hudson.FilePath;
 import hudson.Launcher;
+import hudson.Util;
 import hudson.model.AbstractProject;
 import hudson.model.Item;
 import hudson.model.Run;
@@ -62,6 +60,8 @@ import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Builder;
 import hudson.util.FormValidation;
+import hudson.util.ListBoxModel;
+import jenkins.model.Jenkins;
 import jenkins.tasks.SimpleBuildStep;
 import lombok.Getter;
 
@@ -232,6 +232,7 @@ public class AWSEBDeploymentBuilder extends Builder implements SimpleBuildStep {
     }
 
     @Extension
+    @Symbol("awsebDeployment")
     public static final class DescriptorImpl extends BuildStepDescriptor<Builder> {
 
         public DescriptorImpl() {
@@ -247,24 +248,34 @@ public class AWSEBDeploymentBuilder extends Builder implements SimpleBuildStep {
             return "AWS Elastic Beanstalk";
         }
 
-        public AbstractIdCredentialsListBoxModel<?, ?> doFillCredentialIdItems(
-                @AncestorInPath Item owner) {
-            if (owner == null || !owner.hasPermission(Item.CONFIGURE)) {
-                return new AWSCredentialsListBoxModel();
+        public ListBoxModel doFillCredentialIdItems(@AncestorInPath Item owner,
+                                                    @QueryParameter String credentialId) {
+            StandardListBoxModel result = new StandardListBoxModel();
+
+            if (owner == null ? !Jenkins.get().hasPermission(Jenkins.ADMINISTER)
+                              : !owner.hasPermission(Item.EXTENDED_READ)) {
+                return result.includeCurrentValue(credentialId);
             }
 
-            List<AmazonWebServicesCredentials>
-                    creds =
-                    CredentialsProvider
-                            .lookupCredentials(AmazonWebServicesCredentials.class, owner, ACL.SYSTEM,
-                                    Collections.<DomainRequirement>emptyList());
+            return result
+                    .includeEmptyValue()
+                    .includeAs(ACL.SYSTEM2, owner, AmazonWebServicesCredentials.class)
+                    .includeCurrentValue(credentialId);
+        }
 
-            return new AWSCredentialsListBoxModel()
-                    .withEmptySelection()
-                    .withAll(creds);
+        /**
+         * Validation buttons call AWS with the configured credentials: only allow job configurers
+         */
+        private static void checkConfigurePermission(Item item) {
+            if (item == null) {
+                Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+            } else {
+                item.checkPermission(Item.CONFIGURE);
+            }
         }
 
         public FormValidation doCheckAwsRegion(@QueryParameter String value) {
+            value = Util.fixNull(value);
             if (value.contains("$")) {
                 return FormValidation.warning("Validation skipped due to parameter usage ('$')");
             }
@@ -276,6 +287,7 @@ public class AWSEBDeploymentBuilder extends Builder implements SimpleBuildStep {
         }
 
         public FormValidation doCheckApplicationName(@QueryParameter String value) {
+            value = Util.fixNull(value);
             if (value.contains("$")) {
                 return FormValidation.warning("Validation skipped due to parameter usage ('$')");
             }
@@ -288,6 +300,7 @@ public class AWSEBDeploymentBuilder extends Builder implements SimpleBuildStep {
         }
 
         public FormValidation doCheckEnvironmentName(@QueryParameter String value) {
+            value = Util.fixNull(value);
             if (value.contains("$")) {
                 return FormValidation.warning("Validation skipped due to parameter usage ('$')");
             }
@@ -307,11 +320,15 @@ public class AWSEBDeploymentBuilder extends Builder implements SimpleBuildStep {
             return FormValidation.ok();
         }
 
+        @POST
         public FormValidation doValidateCredentials(
+                @AncestorInPath Item item,
                 @QueryParameter("credentialId") final String credentialId,
                 @QueryParameter final String awsRegion) {
+            checkConfigurePermission(item);
+
             for (String value : Arrays.asList(credentialId, awsRegion)) {
-                if (value.contains("$")) {
+                if (Util.fixNull(value).contains("$")) {
                     return FormValidation.warning("Validation skipped due to parameter usage ('$')");
                 }
             }
@@ -322,15 +339,15 @@ public class AWSEBDeploymentBuilder extends Builder implements SimpleBuildStep {
             try {
                 w.printf("<ul>%n");
 
-                w.printf("<li>Building Client (credentialId: '%s', region: '%s')</li>%n", credentialId,
-                        awsRegion);
+                w.printf("<li>Building Client (credentialId: '%s', region: '%s')</li>%n",
+                        Util.escape(credentialId), Util.escape(awsRegion));
 
-                AWSClientFactory factory = AWSClientFactory.getClientFactory(credentialId, awsRegion);
+                AWSClientFactory factory = AWSClientFactory.getClientFactory(credentialId, awsRegion, item);
 
                 AmazonS3 amazonS3 = factory.getService(AmazonS3Client.class);
                 String s3Endpoint = factory.getEndpointFor((AmazonS3Client) amazonS3);
 
-                w.printf("<li>Testing Amazon S3 Service (endpoint: %s)</li>%n", s3Endpoint);
+                w.printf("<li>Testing Amazon S3 Service (endpoint: %s)</li>%n", Util.escape(s3Endpoint));
 
                 w.printf("<li>Buckets Found: %d</li>%n", amazonS3.listBuckets().size());
 
@@ -343,20 +360,15 @@ public class AWSEBDeploymentBuilder extends Builder implements SimpleBuildStep {
                         factory.getEndpointFor((AWSElasticBeanstalkClient) awsElasticBeanstalk);
 
                 w.printf("<li>Testing AWS Elastic Beanstalk Service (endpoint: %s)</li>%n",
-                        awsEBEndpoint);
+                        Util.escape(awsEBEndpoint));
 
-                List<String>
-                        applicationList =
-                        Lists.transform(awsElasticBeanstalk.describeApplications().getApplications(),
-                                new Function<ApplicationDescription, String>() {
-                                    @Override
-                                    public String apply(ApplicationDescription input) {
-                                        return input.getApplicationName();
-                                    }
-                                });
+                List<String> applicationList = awsElasticBeanstalk.describeApplications().getApplications()
+                        .stream()
+                        .map(ApplicationDescription::getApplicationName)
+                        .collect(Collectors.toList());
 
                 w.printf("<li>Applications Found: %d (%s)</li>%n", applicationList.size(),
-                        StringUtils.join(applicationList, ", "));
+                        Util.escape(StringUtils.join(applicationList, ", ")));
 
                 w.printf("</ul>%n");
 
@@ -366,21 +378,25 @@ public class AWSEBDeploymentBuilder extends Builder implements SimpleBuildStep {
             }
         }
 
-        public FormValidation doValidateCoordinates(@QueryParameter("credentialId") String credentialId,
+        @POST
+        public FormValidation doValidateCoordinates(@AncestorInPath Item item,
+                                                    @QueryParameter("credentialId") String credentialId,
                                                     @QueryParameter("awsRegion") String awsRegion,
                                                     @QueryParameter("applicationName") String applicationName,
                                                     @QueryParameter("environmentName") String environmentName)
                 throws Exception {
+            checkConfigurePermission(item);
+
             for (String value : Arrays
                     .asList(credentialId, awsRegion, applicationName, environmentName)) {
-                if (value.contains("$")) {
+                if (Util.fixNull(value).contains("$")) {
                     return FormValidation.warning("Validation skipped due to parameter usage ('$')");
                 }
             }
 
-            List<String> environmentNames = Lists.<String>newArrayList(environmentName.replaceAll("\\s", "").split(","));
+            List<String> environmentNames = Arrays.asList(Util.fixNull(environmentName).replaceAll("\\s", "").split(","));
 
-            AWSClientFactory clientFactory = AWSClientFactory.getClientFactory(credentialId, awsRegion);
+            AWSClientFactory clientFactory = AWSClientFactory.getClientFactory(credentialId, awsRegion, item);
 
             AWSElasticBeanstalk
                     awsElasticBeanstalk =
@@ -395,7 +411,7 @@ public class AWSEBDeploymentBuilder extends Builder implements SimpleBuildStep {
 
             // Validate multiple environments & display IDs
             if (describeEnvironmentsResult.getEnvironments().size() > 1) {
-                List<String> environmentIds = Lists.<String>newArrayList();
+                List<String> environmentIds = new ArrayList<>();
                 Integer size = describeEnvironmentsResult.getEnvironments().size();
                 for (Integer i = 0; i < size; i++) {
                     environmentIds.add(describeEnvironmentsResult.getEnvironments().get(i).getEnvironmentId());
@@ -429,21 +445,9 @@ public class AWSEBDeploymentBuilder extends Builder implements SimpleBuildStep {
                                               defaultIfBlank(bucketName, "[default account bucket for region]"),
                                               objectKey);
 
-            final String resultingMessage = format("Your object will be uploaded to S3 as: <code>%s</code> (<i>note replacements will apply</i>)", targetPath);
+            final String resultingMessage = format("Your object will be uploaded to S3 as: <code>%s</code> (<i>note replacements will apply</i>)", Util.escape(targetPath));
 
             return FormValidation.okWithMarkup(resultingMessage);
-        }
-    }
-
-    public static class AWSCredentialsListBoxModel extends
-            AbstractIdCredentialsListBoxModel<AWSCredentialsListBoxModel, AmazonWebServicesCredentials> {
-
-        /**
-         * {@inheritDoc}
-         */
-        @NonNull
-        protected String describe(@NonNull AmazonWebServicesCredentials c) {
-            return CredentialsNameProvider.name(c);
         }
     }
 

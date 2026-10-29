@@ -19,13 +19,12 @@ package br.com.ingenieux.jenkins.plugins.awsebdeployment;
 import br.com.ingenieux.jenkins.plugins.awsebdeployment.cmd.DeployerContext;
 import hudson.FilePath;
 import hudson.Launcher;
-import hudson.model.AbstractBuild;
-import hudson.model.BuildListener;
 import hudson.model.Run;
 import hudson.model.TaskListener;
 import hudson.remoting.Future;
+import hudson.remoting.VirtualChannel;
 
-import static org.apache.commons.lang.StringUtils.isBlank;
+import static org.apache.commons.lang3.StringUtils.isBlank;
 
 public class DeployerRunner {
     final Run<?, ?> build;
@@ -61,12 +60,18 @@ public class DeployerRunner {
 
         if (!isBlank(deploymentConfig.getCredentialId())) {
             deploymentConfig.setCredentials(
-                    AWSClientFactory.lookupNamedCredential(deploymentConfig.getCredentialId()));
+                    AWSClientFactory.lookupNamedCredential(deploymentConfig.getCredentialId(), build));
+        }
+
+        final VirtualChannel channel = launcher.getChannel();
+
+        if (channel == null) {
+            throw new IllegalStateException("Agent is offline: no channel to run the deployment on");
         }
 
         final Future<Boolean>
                 booleanFuture =
-                launcher.getChannel().callAsync(new SlaveDeployerCallable(deployerContext));
+                channel.callAsync(new SlaveDeployerCallable(deployerContext));
 
         return booleanFuture.get();
     }
